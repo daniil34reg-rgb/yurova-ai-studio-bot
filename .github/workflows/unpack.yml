@@ -1,0 +1,21 @@
+name: Unpack project
+on:
+  push:
+    paths:
+      - "Yurova-AI-Studio-Bothost-20260725.zip"
+permissions:
+  contents: write
+jobs:
+  unpack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unpack bot source
+        run: |
+          python -m zipfile -e Yurova-AI-Studio-Bothost-20260725.zip .
+          rm Yurova-AI-Studio-Bothost-20260725.zip
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Deploy Yurova AI Studio bot source"
+          git push
