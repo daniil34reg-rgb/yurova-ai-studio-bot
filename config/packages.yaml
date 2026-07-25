@@ -1,0 +1,37 @@
+packages:
+  - code: single
+    title: "Один стикер"
+    credits: 1
+    amount_rub: 99
+    pricing_mode: automatic
+    discount_percent: 0
+    active: true
+    sort_order: 5
+    version: 2
+  - code: starter
+    title: "Мини-набор"
+    credits: 3
+    amount_rub: 249
+    pricing_mode: custom
+    discount_percent: 0
+    active: true
+    sort_order: 10
+    version: 2
+  - code: popular
+    title: "Популярный"
+    credits: 5
+    amount_rub: 399
+    pricing_mode: custom
+    discount_percent: 0
+    active: true
+    sort_order: 20
+    version: 2
+  - code: pro
+    title: "Большой набор"
+    credits: 10
+    amount_rub: 699
+    pricing_mode: custom
+    discount_percent: 0
+    active: true
+    sort_order: 30
+    version: 2

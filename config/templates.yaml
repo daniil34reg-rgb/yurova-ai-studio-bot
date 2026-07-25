@@ -1,0 +1,139 @@
+templates:
+  - slug: royal
+    title: "Король и королева"
+    description: "Премиальный современный королевский образ с выразительными эмоциями."
+    category: "Коллекции"
+    prompt: >-
+      Transform the uploaded adult person into an original premium cartoon Telegram
+      sticker. Preserve the person's recognizable facial identity, hairstyle, skin
+      tone, glasses and distinctive features. Polished 3D illustration, expressive
+      friendly pose, refined royal styling, tasteful gold details, bold white sticker
+      outline, isolated subject on a perfectly flat solid #FF00FF chroma-key
+      background, centered with generous padding. Do not use #FF00FF in the subject.
+      No text, letters, logos, watermark, copyrighted characters or imitation of any
+      named film, animation, game or celebrity.
+    preview_path: "assets/previews/collection-royal.png"
+    credits: 1
+    active: true
+    sort_order: 10
+    version: 4
+
+  - slug: luxury
+    title: "Luxury"
+    description: "Элегантный костюм, вечерний образ или современный премиальный стиль."
+    category: "Коллекции"
+    prompt: >-
+      Transform the uploaded adult person into an original premium cartoon Telegram
+      sticker. Preserve recognizable facial identity, hairstyle, skin tone, glasses
+      and distinctive features. Elegant contemporary luxury styling, polished 3D
+      illustration, expressive friendly pose, sophisticated details without visible
+      brands, bold white sticker outline, isolated subject on a perfectly flat solid
+      #FF00FF chroma-key background, centered with generous padding. Do not use
+      #FF00FF in the subject. No text, letters, logos, watermark, copyrighted
+      characters or imitation of a named franchise.
+    preview_path: "assets/previews/collection-luxury.png"
+    credits: 1
+    active: true
+    sort_order: 20
+    version: 4
+
+  - slug: cinema_hero
+    title: "Герой кино"
+    description: "Яркий оригинальный кинематографичный герой или героиня."
+    category: "Коллекции"
+    prompt: >-
+      Transform the uploaded adult person into an original cinematic cartoon Telegram
+      sticker. Preserve recognizable facial identity, hairstyle, skin tone, glasses
+      and distinctive features. Confident modern hero styling, dramatic yet friendly
+      energy, premium 3D illustration, tasteful rim light, bold white sticker outline,
+      isolated subject on a perfectly flat solid #FF00FF chroma-key background,
+      centered with generous padding. Do not use #FF00FF in the subject. No weapons,
+      text, letters, logos, watermark, copyrighted characters or imitation of any
+      named movie, comic, animation, game or actor.
+    preview_path: "assets/previews/collection-cinema-hero.png"
+    credits: 1
+    active: true
+    sort_order: 30
+    version: 4
+
+  - slug: floral
+    title: "Цветочное настроение"
+    description: "Красивый образ с цветами: нежный, яркий или элегантный."
+    category: "Коллекции"
+    prompt: >-
+      Transform the uploaded adult person into an original premium cartoon Telegram
+      sticker. Preserve recognizable facial identity, hairstyle, skin tone, glasses
+      and distinctive features. Tasteful floral accents, polished 3D illustration,
+      expressive friendly pose, face fully visible, bold white sticker outline,
+      isolated subject on a perfectly flat solid #FF00FF chroma-key background,
+      centered with generous padding. Do not use #FF00FF in the subject. No text,
+      letters, logos, watermark, copyrighted characters or imitation of a named
+      franchise.
+    preview_path: "assets/previews/collection-floral.png"
+    credits: 1
+    active: true
+    sort_order: 40
+    version: 4
+
+  - slug: sticker_handdrawn
+    title: "Рисованный мультфильм"
+    description: "Архивный стиль."
+    category: "Архив"
+    prompt: "Create an original hand-drawn cartoon Telegram sticker with no text."
+    preview_path: "assets/previews/sticker-handdrawn.png"
+    credits: 1
+    active: false
+    sort_order: 210
+    version: 4
+
+  - slug: sticker_3d
+    title: "Объёмный 3D"
+    description: "Архивный стиль."
+    category: "Архив"
+    prompt: "Create an original premium 3D cartoon Telegram sticker with no text."
+    preview_path: "assets/previews/sticker-3d.png"
+    credits: 1
+    active: false
+    sort_order: 220
+    version: 4
+
+  - slug: sticker_comic
+    title: "Яркий комикс"
+    description: "Архивный стиль."
+    category: "Архив"
+    prompt: "Create an original contemporary comic Telegram sticker with no text."
+    preview_path: "assets/previews/sticker-comic.png"
+    credits: 1
+    active: false
+    sort_order: 230
+    version: 4
+
+  - slug: business_portrait
+    title: "Деловой портрет"
+    description: "Скоро появится."
+    category: "В разработке"
+    prompt: "Create a premium editorial business portrait with no text or logos."
+    credits: 1
+    active: false
+    sort_order: 310
+    version: 3
+
+  - slug: cinematic_evening
+    title: "Кинематографичный образ"
+    description: "Скоро появится."
+    category: "В разработке"
+    prompt: "Create an original cinematic evening portrait with no text or logos."
+    credits: 1
+    active: false
+    sort_order: 320
+    version: 3
+
+  - slug: travel_sunrise
+    title: "Путешествия"
+    description: "Скоро появится."
+    category: "В разработке"
+    prompt: "Create a natural travel portrait with no text or logos."
+    credits: 1
+    active: false
+    sort_order: 330
+    version: 3

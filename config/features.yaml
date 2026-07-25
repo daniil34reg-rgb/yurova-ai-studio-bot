@@ -1,0 +1,45 @@
+features:
+  - key: sticker_creator
+    title: "Создание мультяшных стикеров"
+    enabled: true
+    sort_order: 10
+  - key: custom_create
+    title: "Создание изображения по описанию"
+    enabled: false
+    sort_order: 20
+  - key: video_animation
+    title: "Оживление фотографии"
+    enabled: true
+    sort_order: 15
+  - key: photo_processing
+    title: "Обработка фотографий"
+    enabled: true
+    sort_order: 12
+  - key: photo_looks
+    title: "Создание фотообразов"
+    enabled: true
+    sort_order: 13
+  - key: photo_edit
+    title: "Редактирование фотографии"
+    enabled: false
+    sort_order: 30
+  - key: orders
+    title: "Мои стикеры"
+    enabled: true
+    sort_order: 40
+  - key: balance
+    title: "Баланс"
+    enabled: true
+    sort_order: 50
+  - key: payments
+    title: "Пополнение баланса"
+    enabled: true
+    sort_order: 60
+  - key: support
+    title: "Поддержка"
+    enabled: true
+    sort_order: 70
+  - key: data_deletion
+    title: "Удаление данных пользователем"
+    enabled: false
+    sort_order: 80
