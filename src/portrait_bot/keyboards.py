@@ -504,6 +504,7 @@ def admin_menu() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="🎬 Настройки видео", callback_data="admin:video")],
             [InlineKeyboardButton(text="💳 Способы оплаты", callback_data="admin:payments")],
             [InlineKeyboardButton(text="📝 Тексты бота", callback_data="admin:texts")],
+            [InlineKeyboardButton(text="📄 Документы", callback_data="admin:documents")],
             [
                 InlineKeyboardButton(
                     text="🖼 Картинка приветствия",
@@ -511,6 +512,32 @@ def admin_menu() -> InlineKeyboardMarkup:
                 )
             ],
             [InlineKeyboardButton(text="🛟 Обращения", callback_data="admin:tickets")],
+        ]
+    )
+
+
+def admin_documents_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🔒 Политика конфиденциальности",
+                    callback_data="admin:document_edit:privacy",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="📋 Условия использования",
+                    callback_data="admin:document_edit:terms",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="📷 Согласие на обработку фото",
+                    callback_data="admin:document_edit:photo",
+                )
+            ],
+            [InlineKeyboardButton(text="◀️ Админ-панель", callback_data="admin:main")],
         ]
     )
 
@@ -854,7 +881,14 @@ def admin_texts_menu(settings: Sequence[BotSetting]) -> InlineKeyboardMarkup:
             )
         ]
         for item in settings
-        if item.key not in {"credit_display_price_rub", "welcome_image_file_id"}
+        if item.key
+        not in {
+            "credit_display_price_rub",
+            "welcome_image_file_id",
+            "legal_privacy_text",
+            "legal_terms_text",
+            "legal_photo_consent_text",
+        }
     ]
     rows.append([InlineKeyboardButton(text="◀️ Админ-панель", callback_data="admin:main")])
     return InlineKeyboardMarkup(inline_keyboard=rows)

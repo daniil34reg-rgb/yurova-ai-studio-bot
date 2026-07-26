@@ -32,6 +32,7 @@ from sqlalchemy import func, select
 from portrait_bot.context import AppContext
 from portrait_bot.generation_metadata import attach_local_caption
 from portrait_bot.keyboards import (
+    admin_documents_menu,
     admin_features_menu,
     admin_manual_payment_menu,
     admin_menu,
@@ -148,6 +149,7 @@ class AdminFlow(StatesGroup):
     awaiting_package_value = State()
     awaiting_setting_value = State()
     awaiting_welcome_image = State()
+    awaiting_document_value = State()
     awaiting_ticket_reply = State()
     awaiting_payment_qr = State()
 
@@ -188,6 +190,30 @@ async def _settings_map(context: AppContext, keys: set[str]) -> dict[str, str]:
             (await session.scalars(select(BotSetting).where(BotSetting.key.in_(keys)))).all()
         )
     return {item.key: item.value for item in items}
+
+
+LEGAL_DOCUMENTS = {
+    "privacy": ("legal_privacy_text", "Политика конфиденциальности"),
+    "terms": ("legal_terms_text", "Условия использования"),
+    "photo": ("legal_photo_consent_text", "Согласие на обработку фото"),
+}
+
+
+def _default_legal_text(context: AppContext, document: str) -> str:
+    defaults = {
+        "privacy": privacy_text(context.settings),
+        "terms": terms_text(context.settings),
+        "photo": photo_consent_text(context.settings),
+    }
+    return defaults.get(document, "Документ не найден.")
+
+
+async def _legal_text(context: AppContext, document: str) -> str:
+    definition = LEGAL_DOCUMENTS.get(document)
+    if not definition:
+        return "Документ не найден."
+    value = await _setting(context, definition[0])
+    return value or _default_legal_text(context, document)
 
 
 async def _photo_price(context: AppContext, scenario_key: str) -> Decimal:
@@ -469,12 +495,12 @@ async def help_command(message: Message, context: AppContext) -> None:
 
 @router.message(Command("privacy"))
 async def privacy_command(message: Message, context: AppContext) -> None:
-    await message.answer(privacy_text(context.settings))
+    await message.answer(await _legal_text(context, "privacy"))
 
 
 @router.message(Command("terms"))
 async def terms_command(message: Message, context: AppContext) -> None:
-    await message.answer(terms_text(context.settings))
+    await message.answer(await _legal_text(context, "terms"))
 
 
 @router.message(F.text == "📄 Документы")
@@ -492,14 +518,9 @@ async def documents_callback(callback: CallbackQuery) -> None:
 @router.callback_query(F.data.startswith("legal:"))
 async def legal_document(callback: CallbackQuery, context: AppContext) -> None:
     document = (callback.data or "").split(":", 1)[1]
-    texts = {
-        "privacy": privacy_text(context.settings),
-        "terms": terms_text(context.settings),
-        "photo": photo_consent_text(context.settings),
-    }
     await callback.answer()
     if callback.message:
-        await callback.message.answer(texts.get(document, "Документ не найден."))
+        await callback.message.answer(await _legal_text(context, document))
 
 
 @router.message(Command("delete_me"))
@@ -2911,6 +2932,87 @@ async def admin_texts(
             "Выберите сообщение, которое хотите изменить:",
             reply_markup=admin_texts_menu(settings),
         )
+
+
+@router.callback_query(F.data == "admin:documents")
+async def admin_documents(callback: CallbackQuery, context: AppContext) -> None:
+    if not await _admin_callback_allowed(callback, context):
+        return
+    await callback.answer()
+    if callback.message:
+        await callback.message.answer(
+            "Выберите документ, который хотите изменить:",
+            reply_markup=admin_documents_menu(),
+        )
+
+
+@router.callback_query(F.data.startswith("admin:document_edit:"))
+async def admin_edit_document(
+    callback: CallbackQuery,
+    state: FSMContext,
+    context: AppContext,
+) -> None:
+    if not await _admin_callback_allowed(callback, context):
+        return
+    document = (callback.data or "").rsplit(":", 1)[1]
+    definition = LEGAL_DOCUMENTS.get(document)
+    if not definition:
+        await callback.answer("Документ не найден", show_alert=True)
+        return
+    await state.set_state(AdminFlow.awaiting_document_value)
+    await state.update_data(admin_document=document)
+    await callback.answer()
+    if callback.message:
+        await callback.message.answer(f"<b>{definition[1]}</b>\n\nТекущий текст:")
+        await callback.message.answer(await _legal_text(context, document))
+        await callback.message.answer(
+            "Отправьте полный новый текст одним сообщением.\n"
+            "Чтобы вернуть стандартный шаблон, отправьте: <code>СБРОСИТЬ</code>"
+        )
+
+
+@router.message(AdminFlow.awaiting_document_value, F.text)
+async def admin_save_document(
+    message: Message,
+    state: FSMContext,
+    context: AppContext,
+) -> None:
+    if not message.from_user or message.from_user.id not in context.settings.admin_ids:
+        return
+    data = await state.get_data()
+    document = str(data.get("admin_document") or "")
+    definition = LEGAL_DOCUMENTS.get(document)
+    if not definition:
+        await state.clear()
+        await message.answer("Документ не найден.")
+        return
+    raw = (message.text or "").strip()
+    reset = raw.upper() == "СБРОСИТЬ"
+    if not reset and not 10 <= len(raw) <= 3900:
+        await message.answer("Текст должен содержать от 10 до 3900 символов.")
+        return
+    setting_key, title = definition
+    async with context.db.sessions() as session:
+        setting = await session.get(BotSetting, setting_key)
+        if reset:
+            if setting:
+                await session.delete(setting)
+        elif setting:
+            setting.value = raw
+        else:
+            session.add(BotSetting(key=setting_key, title=title, value=raw))
+        session.add(
+            AuditLog(
+                actor_telegram_id=message.from_user.id,
+                action="legal_document_edit",
+                target_type="bot_setting",
+                target_id=setting_key,
+            )
+        )
+        await session.commit()
+    await state.clear()
+    result = "Стандартный шаблон восстановлен ✅" if reset else "Документ сохранён ✅"
+    await message.answer(result, reply_markup=admin_documents_menu())
 
 
 @router.callback_query(F.data == "admin:welcome_image")
