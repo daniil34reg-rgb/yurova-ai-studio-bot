@@ -9,6 +9,7 @@ from io import BytesIO
 from pathlib import Path
 
 from aiogram import Bot, Dispatcher, F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -146,6 +147,7 @@ class AdminFlow(StatesGroup):
     awaiting_template_preview = State()
     awaiting_package_value = State()
     awaiting_setting_value = State()
+    awaiting_welcome_image = State()
     awaiting_ticket_reply = State()
     awaiting_payment_qr = State()
 
@@ -323,6 +325,7 @@ async def _activate_deeplink(
 
 async def _send_welcome(message: Message, context: AppContext) -> None:
     preview = Path("assets/welcome/welcome-hero-v1.png")
+    welcome_image_file_id = await _setting(context, "welcome_image_file_id")
     welcome_text = await _setting(
         context,
         "welcome_message",
@@ -332,6 +335,27 @@ async def _send_welcome(message: Message, context: AppContext) -> None:
         ),
     )
     main_menu = await _main_menu(context)
+    if welcome_image_file_id:
+        try:
+            if len(welcome_text) <= 900:
+                await message.answer_photo(
+                    welcome_image_file_id,
+                    caption=welcome_text,
+                    reply_markup=main_menu,
+                )
+            else:
+                await message.answer_photo(welcome_image_file_id)
+                await message.answer(welcome_text, reply_markup=main_menu)
+            await message.answer(
+                "Что хотите сделать?",
+                reply_markup=home_actions_menu(await _features(context)),
+            )
+            return
+        except TelegramBadRequest:
+            # The stored Telegram file_id can become invalid after changing the bot token.
+            # In that case, keep /start working and fall back to the bundled image.
+            pass
+
     preview_exists = await asyncio.to_thread(preview.exists)
     if preview_exists and len(welcome_text) <= 900:
         await message.answer_photo(
@@ -2887,6 +2911,69 @@ async def admin_texts(
             "Выберите сообщение, которое хотите изменить:",
             reply_markup=admin_texts_menu(settings),
         )
+
+
+@router.callback_query(F.data == "admin:welcome_image")
+async def admin_welcome_image(
+    callback: CallbackQuery,
+    state: FSMContext,
+    context: AppContext,
+) -> None:
+    if not await _admin_callback_allowed(callback, context):
+        return
+    await state.set_state(AdminFlow.awaiting_welcome_image)
+    await callback.answer()
+    if callback.message:
+        await callback.message.answer(
+            "<b>Картинка приветствия</b>\n\n"
+            "Отправьте новую картинку именно как фотографию. "
+            "Она будет показываться вместе с приветственным текстом."
+        )
+
+
+@router.message(AdminFlow.awaiting_welcome_image, F.photo)
+async def admin_save_welcome_image(
+    message: Message,
+    state: FSMContext,
+    context: AppContext,
+) -> None:
+    if not message.from_user or message.from_user.id not in context.settings.admin_ids:
+        return
+    file_id = message.photo[-1].file_id
+    async with context.db.sessions() as session:
+        setting = await session.get(BotSetting, "welcome_image_file_id")
+        if setting:
+            setting.value = file_id
+        else:
+            session.add(
+                BotSetting(
+                    key="welcome_image_file_id",
+                    title="Картинка приветствия",
+                    value=file_id,
+                )
+            )
+        session.add(
+            AuditLog(
+                actor_telegram_id=message.from_user.id,
+                action="welcome_image_edit",
+                target_type="bot_setting",
+                target_id="welcome_image_file_id",
+            )
+        )
+        await session.commit()
+    await state.clear()
+    await message.answer_photo(
+        file_id,
+        caption="Картинка приветствия сохранена ✅",
+        reply_markup=admin_menu(),
+    )
+
+
+@router.message(AdminFlow.awaiting_welcome_image)
+async def admin_welcome_image_invalid(message: Message) -> None:
+    await message.answer(
+        "Нужно отправить изображение как фотографию, а не как файл или текст."
+    )
 
 
 @router.callback_query(F.data.startswith("admin:text_edit:"))
