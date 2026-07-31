@@ -237,3 +237,37 @@ class AuditLog(Base):
     target_id: Mapped[str | None] = mapped_column(String(64))
     details: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class StoreProfile(Base):
+    __tablename__ = "store_profiles"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    phone: Mapped[str] = mapped_column(String(40))
+    full_name: Mapped[str] = mapped_column(String(255))
+    city: Mapped[str] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
+class StoreOrder(Base):
+    __tablename__ = "store_orders"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    campaign_title: Mapped[str] = mapped_column(String(255))
+    quantity: Mapped[int] = mapped_column(Integer)
+    amount_rub: Mapped[Decimal] = mapped_column(Numeric(12, 2))
+    status: Mapped[str] = mapped_column(String(32), default="created", index=True)
+    proof_file_id: Mapped[str | None] = mapped_column(Text)
+    proof_file_type: Mapped[str | None] = mapped_column(String(24))
+    reviewed_by: Mapped[int | None] = mapped_column(BigInteger)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    user: Mapped[User] = relationship()

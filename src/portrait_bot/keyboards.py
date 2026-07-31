@@ -55,6 +55,7 @@ def main_menu(features: Mapping[str, bool]) -> ReplyKeyboardMarkup:
         history.append(KeyboardButton(text="🛟 Написать в поддержку"))
     if history:
         rows.append(history)
+    rows.append([KeyboardButton(text="↩️ Все разделы")])
     rows.append([KeyboardButton(text="📄 Документы")])
     return ReplyKeyboardMarkup(
         keyboard=rows,
@@ -148,6 +149,7 @@ def home_actions_menu(features: Mapping[str, bool]) -> InlineKeyboardMarkup:
                 )
             ]
         )
+    rows.append([InlineKeyboardButton(text="↩️ Все разделы", callback_data="menu:gateway")])
     rows.append([InlineKeyboardButton(text="📄 Документы", callback_data="menu:documents")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -497,6 +499,12 @@ def back_menu() -> InlineKeyboardMarkup:
 def admin_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🛒 Магазин и стартовый экран",
+                    callback_data="admin:store",
+                )
+            ],
             [InlineKeyboardButton(text="⚙️ Функции", callback_data="admin:features")],
             [InlineKeyboardButton(text="🎨 Стили", callback_data="admin:templates")],
             [InlineKeyboardButton(text="💰 Цены и тарифы", callback_data="admin:prices")],

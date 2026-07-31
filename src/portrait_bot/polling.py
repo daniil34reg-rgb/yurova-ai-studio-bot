@@ -11,6 +11,7 @@ from portrait_bot.catalog import seed_catalog
 from portrait_bot.config import get_settings
 from portrait_bot.context import AppContext
 from portrait_bot.runtime import cancel_task, worker_loop
+from portrait_bot.storefront import seed_storefront_settings
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +50,7 @@ async def run() -> None:
                 settings.packages_file,
                 settings.features_file,
             )
+        await seed_storefront_settings(context)
         await initialize_telegram(context, settings.telegram_retry_seconds)
         worker_task = asyncio.create_task(worker_loop(context))
         await context.dispatcher.start_polling(context.bot, context=context)

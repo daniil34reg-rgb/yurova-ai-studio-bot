@@ -112,6 +112,8 @@ from portrait_bot.sticker_options import (
     reaction_by_key,
     variant_by_key,
 )
+from portrait_bot.storefront import gateway_menu, store_settings
+from portrait_bot.storefront import router as storefront_router
 from portrait_bot.style_grid import build_style_grid
 
 
@@ -399,6 +401,43 @@ async def _send_welcome(message: Message, context: AppContext) -> None:
     )
 
 
+async def _send_gateway(message: Message, context: AppContext) -> None:
+    preview = Path("assets/welcome/welcome-hero-v1.png")
+    welcome_image_file_id = await _setting(context, "welcome_image_file_id")
+    welcome_text = await _setting(
+        context,
+        "welcome_message",
+        (
+            "Добро пожаловать в <b>Yurova AI Studio</b>. Здесь можно купить "
+            "стикер действующей акции или создать изображение с помощью AI."
+        ),
+    )
+    values = await store_settings(context)
+    caption = f"{welcome_text}\n\n<b>{escape(values['gateway_message'])}</b>"
+    markup = gateway_menu(values)
+    if welcome_image_file_id:
+        try:
+            if len(caption) <= 900:
+                await message.answer_photo(
+                    welcome_image_file_id,
+                    caption=caption,
+                    reply_markup=markup,
+                )
+            else:
+                await message.answer_photo(welcome_image_file_id)
+                await message.answer(caption, reply_markup=markup)
+            return
+        except TelegramBadRequest:
+            pass
+    preview_exists = await asyncio.to_thread(preview.exists)
+    if preview_exists and len(caption) <= 900:
+        await message.answer_photo(FSInputFile(preview), caption=caption, reply_markup=markup)
+    else:
+        if preview_exists:
+            await message.answer_photo(FSInputFile(preview))
+        await message.answer(caption, reply_markup=markup)
+
+
 @router.message(CommandStart())
 async def start(message: Message, state: FSMContext, context: AppContext) -> None:
     await state.clear()
@@ -423,7 +462,7 @@ async def start(message: Message, state: FSMContext, context: AppContext) -> Non
         return
     if await _activate_deeplink(message, state, context, payload):
         return
-    await _send_welcome(message, context)
+    await _send_gateway(message, context)
 
 
 @router.callback_query(F.data == "consent:accept")
@@ -481,7 +520,30 @@ async def accept_consent(
     if isinstance(callback.message, Message):
         await state.clear()
         await callback.message.answer("Согласие принято ✅")
+        await _send_gateway(callback.message, context)
+
+
+@router.callback_query(F.data == "entry:ai")
+async def enter_ai(callback: CallbackQuery, context: AppContext) -> None:
+    await callback.answer()
+    if isinstance(callback.message, Message):
         await _send_welcome(callback.message, context)
+
+
+@router.callback_query(F.data == "menu:gateway")
+@router.message(F.text == "↩️ Все разделы")
+async def show_gateway(
+    event: Message | CallbackQuery,
+    state: FSMContext,
+    context: AppContext,
+) -> None:
+    await state.clear()
+    if isinstance(event, CallbackQuery):
+        await event.answer()
+        if isinstance(event.message, Message):
+            await _send_gateway(event.message, context)
+    else:
+        await _send_gateway(event, context)
 
 
 @router.message(Command("help"))
@@ -3500,6 +3562,7 @@ def build_dispatcher(context: AppContext) -> Dispatcher:
         else MemoryStorage()
     )
     dispatcher = Dispatcher(storage=storage)
+    dispatcher.include_router(storefront_router)
     dispatcher.include_router(router)
     dispatcher["context"] = context
     return dispatcher
