@@ -3,7 +3,7 @@ from __future__ import annotations
 from html import escape
 
 from aiogram import F, Router
-from aiogram.filters import Command
+from aiogram.filters import Command, Filter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.config import settings as store_runtime_settings
+from bot.gateway_options import configure_all_sections_button
 from bot.handlers.admin import _open_admin_panel as open_store_admin_panel
 from bot.handlers.start import (
     NO_PROMO_TEXT,
@@ -42,7 +43,39 @@ GATEWAY_SETTINGS: dict[str, tuple[str, str]] = {
         "Вторая кнопка на старте",
         "✨ Генерация изображений",
     ),
+    "gateway_all_sections_enabled": (
+        "Кнопка «Все разделы» включена",
+        "true",
+    ),
+    "gateway_all_sections_label": (
+        "Название кнопки «Все разделы»",
+        "↩️ Все разделы",
+    ),
 }
+
+
+def _enabled(value: str) -> bool:
+    return value.strip().lower() in {"1", "true", "yes", "on", "да"}
+
+
+def all_sections_label(values: dict[str, str]) -> str | None:
+    if not _enabled(values["gateway_all_sections_enabled"]):
+        return None
+    return values["gateway_all_sections_label"].strip() or "↩️ Все разделы"
+
+
+def apply_gateway_options(values: dict[str, str]) -> None:
+    configure_all_sections_button(
+        enabled=_enabled(values["gateway_all_sections_enabled"]),
+        label=values["gateway_all_sections_label"],
+    )
+
+
+class GatewayButtonFilter(Filter):
+    async def __call__(self, message: Message, context: AppContext) -> bool:
+        values = await store_settings(context)
+        label = all_sections_label(values)
+        return bool(label and message.text == label)
 
 
 async def seed_storefront_settings(context: AppContext) -> None:
@@ -58,6 +91,7 @@ async def seed_storefront_settings(context: AppContext) -> None:
             if key not in existing:
                 session.add(BotSetting(key=key, title=title, value=default))
         await session.commit()
+    apply_gateway_options(await store_settings(context))
 
 
 async def store_settings(context: AppContext) -> dict[str, str]:
@@ -119,6 +153,7 @@ def admin_root_menu() -> InlineKeyboardMarkup:
 
 
 def gateway_admin_menu(values: dict[str, str]) -> InlineKeyboardMarkup:
+    button_enabled = _enabled(values["gateway_all_sections_enabled"])
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -137,6 +172,22 @@ def gateway_admin_menu(values: dict[str, str]) -> InlineKeyboardMarkup:
                 InlineKeyboardButton(
                     text="✏️ Текст над кнопками",
                     callback_data="admin:gateway:edit:gateway_message",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text=(
+                        "🟢 Кнопка «Все разделы» включена"
+                        if button_enabled
+                        else "⚪ Кнопка «Все разделы» выключена"
+                    ),
+                    callback_data="admin:gateway:toggle:gateway_all_sections_enabled",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="✏️ Название кнопки «Все разделы»",
+                    callback_data="admin:gateway:edit:gateway_all_sections_label",
                 )
             ],
             [InlineKeyboardButton(text="◀️ Выбор админки", callback_data="admin:root")],
@@ -238,7 +289,46 @@ async def open_gateway_admin(callback: CallbackQuery, context: AppContext) -> No
             "<b>Начальный экран</b>\n\n"
             f"Текст: {escape(values['gateway_message'])}\n"
             f"Первая кнопка: {escape(values['gateway_store_button'])}\n"
-            f"Вторая кнопка: {escape(values['gateway_ai_button'])}",
+            f"Вторая кнопка: {escape(values['gateway_ai_button'])}\n"
+            "Кнопка «Все разделы»: "
+            f"{'включена' if _enabled(values['gateway_all_sections_enabled']) else 'выключена'}\n"
+            f"Название: {escape(values['gateway_all_sections_label'])}",
+            reply_markup=gateway_admin_menu(values),
+        )
+
+
+@router.callback_query(F.data == "admin:gateway:toggle:gateway_all_sections_enabled")
+async def toggle_all_sections_button(
+    callback: CallbackQuery,
+    context: AppContext,
+) -> None:
+    if not _is_admin(callback.from_user.id, context):
+        await callback.answer("Нет доступа.", show_alert=True)
+        return
+    values = await store_settings(context)
+    new_value = "false" if _enabled(values["gateway_all_sections_enabled"]) else "true"
+    async with context.db.sessions() as session:
+        item = await session.get(BotSetting, "gateway_all_sections_enabled")
+        if item:
+            item.value = new_value
+        else:
+            title = GATEWAY_SETTINGS["gateway_all_sections_enabled"][0]
+            session.add(
+                BotSetting(
+                    key="gateway_all_sections_enabled",
+                    title=title,
+                    value=new_value,
+                )
+            )
+        await session.commit()
+    values = await store_settings(context)
+    apply_gateway_options(values)
+    await callback.answer("Настройка сохранена")
+    if isinstance(callback.message, Message):
+        await callback.message.answer(
+            "Кнопка «Все разделы» включена."
+            if _enabled(new_value)
+            else "Кнопка «Все разделы» выключена.",
             reply_markup=gateway_admin_menu(values),
         )
 
@@ -289,6 +379,7 @@ async def save_gateway_value(
         await session.commit()
     await state.clear()
     values = await store_settings(context)
+    apply_gateway_options(values)
     await message.answer(
         "Сохранено ✅",
         reply_markup=gateway_admin_menu(values),

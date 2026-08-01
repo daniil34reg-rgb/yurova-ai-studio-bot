@@ -115,7 +115,12 @@ from portrait_bot.sticker_options import (
     reaction_by_key,
     variant_by_key,
 )
-from portrait_bot.storefront import gateway_menu, store_settings
+from portrait_bot.storefront import (
+    GatewayButtonFilter,
+    all_sections_label,
+    gateway_menu,
+    store_settings,
+)
 from portrait_bot.storefront import router as storefront_router
 from portrait_bot.style_grid import build_style_grid
 
@@ -180,7 +185,19 @@ async def _features(context: AppContext) -> dict[str, bool]:
 
 
 async def _main_menu(context: AppContext) -> ReplyKeyboardMarkup:
-    return main_menu(await _features(context))
+    values = await store_settings(context)
+    return main_menu(
+        await _features(context),
+        all_sections_label=all_sections_label(values),
+    )
+
+
+async def _home_actions_menu(context: AppContext) -> InlineKeyboardMarkup:
+    values = await store_settings(context)
+    return home_actions_menu(
+        await _features(context),
+        all_sections_label=all_sections_label(values),
+    )
 
 
 async def _setting(context: AppContext, key: str, default: str = "") -> str:
@@ -379,7 +396,7 @@ async def _send_welcome(message: Message, context: AppContext) -> None:
                 await message.answer(welcome_text, reply_markup=main_menu)
             await message.answer(
                 "Что хотите сделать?",
-                reply_markup=home_actions_menu(await _features(context)),
+                reply_markup=await _home_actions_menu(context),
             )
             return
         except TelegramBadRequest:
@@ -400,7 +417,7 @@ async def _send_welcome(message: Message, context: AppContext) -> None:
         await message.answer(welcome_text, reply_markup=main_menu)
     await message.answer(
         "Что хотите сделать?",
-        reply_markup=home_actions_menu(await _features(context)),
+        reply_markup=await _home_actions_menu(context),
     )
 
 
@@ -534,7 +551,7 @@ async def enter_ai(callback: CallbackQuery, context: AppContext) -> None:
 
 
 @router.callback_query(F.data == "menu:gateway")
-@router.message(F.text == "↩️ Все разделы")
+@router.message(GatewayButtonFilter())
 async def show_gateway(
     event: Message | CallbackQuery,
     state: FSMContext,
@@ -1858,7 +1875,7 @@ async def callback_main(
         )
         await callback.message.answer(
             "Что хотите сделать?",
-            reply_markup=home_actions_menu(await _features(context)),
+            reply_markup=await _home_actions_menu(context),
         )
 
 

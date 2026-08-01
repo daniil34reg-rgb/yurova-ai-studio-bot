@@ -7,13 +7,17 @@ from aiogram.types import (
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+from bot.gateway_options import all_sections_button_label
+
 
 def main_menu_kb(show_admin: bool = False, join_label: str = "УЧАСТВОВАТЬ") -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text=join_label, callback_data="giveaway_join")
     if show_admin:
         builder.button(text="🔐 Админ-панель", callback_data="admin_open")
-    builder.button(text="↩️ Все разделы", callback_data="menu:gateway")
+    back_label = all_sections_button_label()
+    if back_label:
+        builder.button(text=back_label, callback_data="menu:gateway")
     builder.adjust(1)
     return builder.as_markup()
 

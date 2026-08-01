@@ -21,7 +21,11 @@ from portrait_bot.sticker_options import (
 )
 
 
-def main_menu(features: Mapping[str, bool]) -> ReplyKeyboardMarkup:
+def main_menu(
+    features: Mapping[str, bool],
+    *,
+    all_sections_label: str | None = "↩️ Все разделы",
+) -> ReplyKeyboardMarkup:
     rows: list[list[KeyboardButton]] = []
     if features.get("sticker_creator", True):
         rows.append([KeyboardButton(text="🎨 Сделать стикеры")])
@@ -55,7 +59,8 @@ def main_menu(features: Mapping[str, bool]) -> ReplyKeyboardMarkup:
         history.append(KeyboardButton(text="🛟 Написать в поддержку"))
     if history:
         rows.append(history)
-    rows.append([KeyboardButton(text="↩️ Все разделы")])
+    if all_sections_label:
+        rows.append([KeyboardButton(text=all_sections_label)])
     rows.append([KeyboardButton(text="📄 Документы")])
     return ReplyKeyboardMarkup(
         keyboard=rows,
@@ -86,7 +91,11 @@ def consent_menu() -> InlineKeyboardMarkup:
     )
 
 
-def home_actions_menu(features: Mapping[str, bool]) -> InlineKeyboardMarkup:
+def home_actions_menu(
+    features: Mapping[str, bool],
+    *,
+    all_sections_label: str | None = "↩️ Все разделы",
+) -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = []
     if features.get("sticker_creator", True):
         rows.append(
@@ -149,7 +158,15 @@ def home_actions_menu(features: Mapping[str, bool]) -> InlineKeyboardMarkup:
                 )
             ]
         )
-    rows.append([InlineKeyboardButton(text="↩️ Все разделы", callback_data="menu:gateway")])
+    if all_sections_label:
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text=all_sections_label,
+                    callback_data="menu:gateway",
+                )
+            ]
+        )
     rows.append([InlineKeyboardButton(text="📄 Документы", callback_data="menu:documents")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
