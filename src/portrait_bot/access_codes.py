@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -14,6 +15,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from portrait_bot.models import AccessCode, AccessCodeBatch, LedgerEntry, User
 
 CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
+ACCESS_CODE_PATTERN = re.compile(
+    r"(?i)(?<![A-Z0-9])YAI[\s-]*([2-9A-HJ-NP-Z]{4})[\s-]*([2-9A-HJ-NP-Z]{4})(?![A-Z0-9])"
+)
 
 
 @dataclass(slots=True, frozen=True)
@@ -30,6 +34,14 @@ def normalize_access_code(raw: str) -> str:
     if compact.startswith("YAI"):
         compact = compact[3:]
     return f"YAI-{compact[:4]}-{compact[4:8]}" if len(compact) == 8 else raw.strip().upper()
+
+
+def extract_access_code(raw: str) -> str | None:
+    """Return the first access code found in copied text or a TXT report."""
+    match = ACCESS_CODE_PATTERN.search(raw)
+    if match is None:
+        return None
+    return f"YAI-{match.group(1).upper()}-{match.group(2).upper()}"
 
 
 def _new_code() -> str:

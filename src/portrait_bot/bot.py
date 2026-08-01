@@ -10,7 +10,7 @@ from pathlib import Path
 
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.filters import Command, CommandStart
+from aiogram.filters import Command, CommandStart, Filter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
@@ -37,6 +37,7 @@ from portrait_bot.access_codes import (
     access_code_stats,
     build_access_codes_workbook,
     create_access_code_batch,
+    extract_access_code,
     recent_access_codes,
     redeem_access_code,
 )
@@ -162,6 +163,17 @@ class PhotoFlow(StatesGroup):
 class PaymentFlow(StatesGroup):
     awaiting_custom_amount = State()
     awaiting_proof = State()
+
+
+class AccessCodeTextFilter(Filter):
+    async def __call__(self, message: Message) -> bool:
+        return extract_access_code(message.text or "") is not None
+
+
+class AccessCodeDocumentFilter(Filter):
+    async def __call__(self, message: Message) -> bool:
+        document = message.document
+        return bool(document and (document.file_name or "").lower().endswith(".txt"))
 
 
 class AccessFlow(StatesGroup):
@@ -738,15 +750,21 @@ async def start_access_activation(
         await event.answer(text, reply_markup=back_menu())
 
 
-@router.message(F.text.startswith("YAI-"))
-@router.message(AccessFlow.awaiting_code, F.text)
-async def activate_access_code(
+async def _activate_access_code_value(
     message: Message,
     state: FSMContext,
     context: AppContext,
+    raw_code: str,
 ) -> None:
     telegram_user = message.from_user
     if telegram_user is None:
+        return
+    extracted = extract_access_code(raw_code)
+    if extracted is None:
+        await message.answer(
+            "Код не распознан. Отправьте код вида <code>YAI-XXXX-XXXX</code> текстом "
+            "или приложите полученный TXT-файл."
+        )
         return
     async with context.db.sessions() as session:
         user = await get_or_create_user(
@@ -760,7 +778,7 @@ async def activate_access_code(
             code = await redeem_access_code(
                 session,
                 user=user,
-                raw_code=message.text or "",
+                raw_code=extracted,
             )
         except ValueError as exc:
             errors = {
@@ -779,6 +797,35 @@ async def activate_access_code(
         f"Теперь доступно: <b>{current}</b>",
         reply_markup=back_menu(),
     )
+
+
+@router.message(AccessCodeTextFilter())
+@router.message(AccessFlow.awaiting_code, F.text)
+async def activate_access_code(
+    message: Message,
+    state: FSMContext,
+    context: AppContext,
+) -> None:
+    await _activate_access_code_value(message, state, context, message.text or "")
+
+
+@router.message(AccessCodeDocumentFilter())
+async def activate_access_code_document(
+    message: Message,
+    state: FSMContext,
+    context: AppContext,
+    bot: Bot,
+) -> None:
+    if message.document is None:
+        return
+    destination = BytesIO()
+    await bot.download(message.document.file_id, destination=destination)
+    try:
+        content = destination.getvalue().decode("utf-8-sig")
+    except UnicodeDecodeError:
+        await message.answer("Не удалось прочитать TXT-файл. Отправьте код обычным текстом.")
+        return
+    await _activate_access_code_value(message, state, context, content)
 
 
 @router.message(Command("styles"))

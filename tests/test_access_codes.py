@@ -11,6 +11,7 @@ from portrait_bot.access_codes import (
     access_code_stats,
     build_access_codes_workbook,
     create_access_code_batch,
+    extract_access_code,
     redeem_access_code,
 )
 from portrait_bot.services import (
@@ -21,6 +22,12 @@ from portrait_bot.services import (
     get_or_create_user,
     wallet_balance,
 )
+
+
+def test_extract_access_code_from_copied_text() -> None:
+    assert extract_access_code("Код:  YAI-2345-ABCD\n") == "YAI-2345-ABCD"
+    assert extract_access_code("yai 2345 abcd") == "YAI-2345-ABCD"
+    assert extract_access_code("без кода") is None
 
 
 async def test_access_code_can_only_be_redeemed_once(database) -> None:
