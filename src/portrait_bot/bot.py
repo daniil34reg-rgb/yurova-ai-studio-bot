@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import shutil
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from html import escape
 from io import BytesIO
 from pathlib import Path
+from typing import Any
 
-from aiogram import Bot, Dispatcher, F, Router
+from aiogram import BaseMiddleware, Bot, Dispatcher, F, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandStart, Filter
 from aiogram.fsm.context import FSMContext
@@ -178,6 +181,25 @@ class AccessCodeDocumentFilter(Filter):
 
 class AccessFlow(StatesGroup):
     awaiting_code = State()
+
+
+class AccessCodeIngressMiddleware(BaseMiddleware):
+    """Redeem copied access codes before menu/FSM handlers can consume them."""
+
+    async def __call__(
+        self,
+        handler: Callable[[Message, dict[str, Any]], Awaitable[Any]],
+        event: Message,
+        data: dict[str, Any],
+    ) -> Any:
+        text = event.text or ""
+        if extract_access_code(text) is not None:
+            context = data.get("context")
+            state = data.get("state")
+            if isinstance(context, AppContext) and isinstance(state, FSMContext):
+                await _activate_access_code_value(event, state, context, text)
+                return None
+        return await handler(event, data)
 
 
 class AdminAccessCodeFlow(StatesGroup):
@@ -788,6 +810,16 @@ async def _activate_access_code_value(
                 "access_code_disabled": "Этот код отключён. Обратитесь в поддержку.",
             }
             await message.answer(errors.get(str(exc), "Не удалось активировать код."))
+            return
+        except Exception:
+            logging.exception(
+                "Access code redemption failed for Telegram user %s",
+                telegram_user.id,
+            )
+            await message.answer(
+                "Не удалось активировать код из-за внутренней ошибки. "
+                "Код не использован — попробуйте ещё раз через минуту."
+            )
             return
         current = await balance(session, user.id)
     await state.clear()
@@ -3941,6 +3973,7 @@ def build_dispatcher(context: AppContext) -> Dispatcher:
     )
     dispatcher = Dispatcher(storage=storage)
     dispatcher.update.outer_middleware(StoreDatabaseMiddleware(store_session_maker))
+    dispatcher.message.outer_middleware(AccessCodeIngressMiddleware())
     dispatcher.include_router(storefront_router)
     dispatcher.include_router(router)
     dispatcher.include_router(setup_store_routers())
