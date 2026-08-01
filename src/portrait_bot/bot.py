@@ -29,6 +29,9 @@ from aiogram.types import (
 )
 from sqlalchemy import func, select
 
+from bot.database import async_session_maker as store_session_maker
+from bot.handlers import setup_routers as setup_store_routers
+from bot.middlewares import DatabaseMiddleware as StoreDatabaseMiddleware
 from portrait_bot.context import AppContext
 from portrait_bot.generation_metadata import attach_local_caption
 from portrait_bot.keyboards import (
@@ -1859,11 +1862,7 @@ async def callback_main(
         )
 
 
-@router.message(Command("admin"))
-async def admin(message: Message, context: AppContext) -> None:
-    if not message.from_user or message.from_user.id not in context.settings.admin_ids:
-        await message.answer("Команда недоступна.")
-        return
+async def _send_generation_admin(message: Message, context: AppContext) -> None:
     async with context.db.sessions() as session:
         users_count = await session.scalar(select(func.count(User.id)))
         payments_count = await session.scalar(select(func.count(Payment.id)))
@@ -3133,6 +3132,25 @@ async def admin_save_welcome_image(
     )
 
 
+@router.message(Command("admin"))
+async def admin(message: Message, context: AppContext) -> None:
+    # Normally handled by the gateway router. Kept as a safe fallback.
+    if not message.from_user or message.from_user.id not in context.settings.admin_ids:
+        await message.answer("Команда недоступна.")
+        return
+    await _send_generation_admin(message, context)
+
+
+@router.callback_query(F.data == "admin:section:ai")
+async def open_generation_admin(callback: CallbackQuery, context: AppContext) -> None:
+    if callback.from_user.id not in context.settings.admin_ids:
+        await callback.answer("Нет доступа.", show_alert=True)
+        return
+    await callback.answer()
+    if isinstance(callback.message, Message):
+        await _send_generation_admin(callback.message, context)
+
+
 @router.message(AdminFlow.awaiting_welcome_image)
 async def admin_welcome_image_invalid(message: Message) -> None:
     await message.answer(
@@ -3562,7 +3580,9 @@ def build_dispatcher(context: AppContext) -> Dispatcher:
         else MemoryStorage()
     )
     dispatcher = Dispatcher(storage=storage)
+    dispatcher.update.outer_middleware(StoreDatabaseMiddleware(store_session_maker))
     dispatcher.include_router(storefront_router)
     dispatcher.include_router(router)
+    dispatcher.include_router(setup_store_routers())
     dispatcher["context"] = context
     return dispatcher

@@ -18,9 +18,11 @@ dependencies = [
   "openai>=1.99,<3",
   "pillow>=11.3,<13",
   "pydantic-settings>=2.10,<3",
+  "qrcode[pil]>=8,<9",
   "python-multipart>=0.0.20,<1",
   "pyyaml>=6.0,<7",
   "redis>=6.2,<8",
+  "cachetools>=5.5,<7",
   "sqlalchemy>=2.0.41,<3",
   "structlog>=25.4,<26",
   "uvicorn[standard]>=0.35,<1",
@@ -40,7 +42,7 @@ dev = [
 portrait-bot = "portrait_bot.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/portrait_bot"]
+packages = ["src/portrait_bot", "src/bot"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

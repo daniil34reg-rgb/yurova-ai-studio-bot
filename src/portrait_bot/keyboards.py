@@ -501,8 +501,8 @@ def admin_menu() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="🛒 Магазин и стартовый экран",
-                    callback_data="admin:store",
+                    text="↩️ Выбор админ-панели",
+                    callback_data="admin:root",
                 )
             ],
             [InlineKeyboardButton(text="⚙️ Функции", callback_data="admin:features")],

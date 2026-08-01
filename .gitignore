@@ -3,6 +3,8 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.test-tmp/
+logs/
 .mypy_cache/
 .ruff_cache/
 .coverage
