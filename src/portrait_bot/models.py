@@ -188,6 +188,42 @@ class LedgerEntry(Base):
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class AccessCodeBatch(Base):
+    __tablename__ = "access_code_batches"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    title: Mapped[str] = mapped_column(String(255))
+    code_count: Mapped[int] = mapped_column(Integer)
+    accesses_per_code: Mapped[int] = mapped_column(Integer)
+    created_by: Mapped[int] = mapped_column(BigInteger, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class AccessCode(Base):
+    __tablename__ = "access_codes"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    batch_id: Mapped[str] = mapped_column(
+        ForeignKey("access_code_batches.id", ondelete="CASCADE"), index=True
+    )
+    code: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    accesses: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(24), default="active", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    redeemed_by_user_id: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True, index=True
+    )
+    redeemed_by_telegram_id: Mapped[int | None] = mapped_column(
+        BigInteger, nullable=True, index=True
+    )
+    redeemed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    batch: Mapped[AccessCodeBatch] = relationship()
+    redeemed_by: Mapped[User | None] = relationship()
+
+
 class Generation(Base):
     __tablename__ = "generations"
 

@@ -32,9 +32,19 @@ from sqlalchemy import func, select
 from bot.database import async_session_maker as store_session_maker
 from bot.handlers import setup_routers as setup_store_routers
 from bot.middlewares import DatabaseMiddleware as StoreDatabaseMiddleware
+from portrait_bot.access_codes import (
+    access_code_report_rows,
+    access_code_stats,
+    build_access_codes_workbook,
+    create_access_code_batch,
+    recent_access_codes,
+    redeem_access_code,
+)
 from portrait_bot.context import AppContext
 from portrait_bot.generation_metadata import attach_local_caption
 from portrait_bot.keyboards import (
+    access_code_admin_menu,
+    access_code_expiry_menu,
     admin_documents_menu,
     admin_features_menu,
     admin_manual_payment_menu,
@@ -98,6 +108,7 @@ from portrait_bot.photo_scenarios import (
 )
 from portrait_bot.services import (
     add_wallet_entry,
+    balance,
     create_generation,
     create_payment,
     create_ticket,
@@ -151,6 +162,15 @@ class PhotoFlow(StatesGroup):
 class PaymentFlow(StatesGroup):
     awaiting_custom_amount = State()
     awaiting_proof = State()
+
+
+class AccessFlow(StatesGroup):
+    awaiting_code = State()
+
+
+class AdminAccessCodeFlow(StatesGroup):
+    awaiting_count = State()
+    awaiting_accesses = State()
 
 
 class AdminFlow(StatesGroup):
@@ -219,6 +239,19 @@ LEGAL_DOCUMENTS = {
     "terms": ("legal_terms_text", "Условия использования"),
     "photo": ("legal_photo_consent_text", "Согласие на обработку фото"),
 }
+
+
+def _generation_charge_text(generation: Generation) -> str:
+    if generation.credits > 0:
+        amount = generation.credits
+        if amount % 10 == 1 and amount % 100 != 11:
+            label = "доступ"
+        elif amount % 10 in {2, 3, 4} and amount % 100 not in {12, 13, 14}:
+            label = "доступа"
+        else:
+            label = "доступов"
+        return f"{generation.credits} {label} к генерации"
+    return format_rub(generation.price_rub)
 
 
 def _default_legal_text(context: AppContext, document: str) -> str:
@@ -668,9 +701,12 @@ async def show_balance(event: Message | CallbackQuery, context: AppContext) -> N
     async with context.db.sessions() as session:
         user = await get_or_create_user(session, telegram_id=telegram_user.id)
         value = await wallet_balance(session, user.id)
+        accesses = await balance(session, user.id)
     text = (
         f"Ваш баланс: <b>{format_rub(value)}</b>.\n\n"
-        "С него оплачиваются стикеры, обработка фото, фотообразы и оживление фотографий."
+        f"Доступно генераций: <b>{accesses}</b>.\n\n"
+        "Активированные доступы сначала используются для стикеров и обработки "
+        "фото. Оживление фото оплачивается с рублёвого баланса."
     )
     if isinstance(event, CallbackQuery):
         await event.answer()
@@ -678,6 +714,69 @@ async def show_balance(event: Message | CallbackQuery, context: AppContext) -> N
             await event.message.answer(text, reply_markup=back_menu())
     else:
         await event.answer(text, reply_markup=back_menu())
+
+
+@router.message(F.text == "🎟 Активировать доступ")
+@router.callback_query(F.data == "access:redeem")
+async def start_access_activation(
+    event: Message | CallbackQuery,
+    state: FSMContext,
+) -> None:
+    await state.clear()
+    await state.set_state(AccessFlow.awaiting_code)
+    text = (
+        "<b>Активировать доступ</b>\n\n"
+        "Отправьте полученный код одним сообщением. "
+        "После активации доступы к генерации появятся на вашем балансе."
+    )
+    if isinstance(event, CallbackQuery):
+        await event.answer()
+        if event.message:
+            await event.message.answer(text, reply_markup=back_menu())
+    else:
+        await event.answer(text, reply_markup=back_menu())
+
+
+@router.message(AccessFlow.awaiting_code, F.text)
+async def activate_access_code(
+    message: Message,
+    state: FSMContext,
+    context: AppContext,
+) -> None:
+    telegram_user = message.from_user
+    if telegram_user is None:
+        return
+    async with context.db.sessions() as session:
+        user = await get_or_create_user(
+            session,
+            telegram_id=telegram_user.id,
+            username=telegram_user.username,
+            first_name=telegram_user.first_name,
+            language_code=telegram_user.language_code,
+        )
+        try:
+            code = await redeem_access_code(
+                session,
+                user=user,
+                raw_code=message.text or "",
+            )
+        except ValueError as exc:
+            errors = {
+                "access_code_not_found": "Код не найден. Проверьте написание и попробуйте ещё раз.",
+                "access_code_redeemed": "Этот код уже был активирован.",
+                "access_code_expired": "Срок действия этого кода истёк.",
+                "access_code_disabled": "Этот код отключён. Обратитесь в поддержку.",
+            }
+            await message.answer(errors.get(str(exc), "Не удалось активировать код."))
+            return
+        current = await balance(session, user.id)
+    await state.clear()
+    await message.answer(
+        "Доступ активирован ✅\n"
+        f"Начислено генераций: <b>{code.accesses}</b>\n"
+        f"Теперь доступно: <b>{current}</b>",
+        reply_markup=back_menu(),
+    )
 
 
 @router.message(Command("styles"))
@@ -1204,7 +1303,7 @@ async def receive_scenario_photo(
         except ValueError as exc:
             if str(exc) == "insufficient_balance":
                 await message.answer(
-                    "Недостаточно средств на балансе. Пополните его:",
+                    "Недостаточно доступов или средств. Пополните баланс:",
                     reply_markup=await _topup_markup(context),
                 )
                 return
@@ -1214,7 +1313,7 @@ async def receive_scenario_photo(
     await message.answer(
         f"Фото принято ✅\nЗадание <code>{generation.id[:8]}</code> поставлено в очередь.\n"
         f"Будет создана: <b>{result_name}</b>.\n"
-        f"Списано: <b>{format_rub(generation.price_rub)}</b>."
+        f"Списано: <b>{_generation_charge_text(generation)}</b>."
     )
 
 
@@ -1343,7 +1442,7 @@ async def receive_photo(
         except ValueError as exc:
             if str(exc) == "insufficient_balance":
                 await message.answer(
-                    "Недостаточно средств на балансе. Пополните его:",
+                    "Недостаточно доступов или средств. Пополните баланс:",
                     reply_markup=await _topup_markup(context),
                 )
                 return
@@ -1352,7 +1451,7 @@ async def receive_photo(
     await message.answer(
         f"Фото принято ✅\nЗадание <code>{generation.id[:8]}</code> поставлено в очередь.\n"
         f"Будет создано стикеров: <b>{quantity}</b>.\n"
-        f"Списано: <b>{format_rub(generation.price_rub)}</b>."
+        f"Списано: <b>{_generation_charge_text(generation)}</b>."
     )
 
 
@@ -1444,6 +1543,7 @@ async def _payment_flags(context: AppContext) -> tuple[bool, bool]:
 @router.message(F.text == "💳 Купить генерации")
 @router.message(F.text == "🛍 Купить стикеры")
 @router.message(F.text == "💳 Пополнить баланс")
+@router.message(F.text == "🛒 Купить доступ к генерации")
 @router.callback_query(F.data == "menu:buy")
 async def buy(event: Message | CallbackQuery, context: AppContext) -> None:
     if not await _feature_enabled(context, "payments"):
@@ -1451,8 +1551,8 @@ async def buy(event: Message | CallbackQuery, context: AppContext) -> None:
         return
     markup = await _topup_markup(context)
     text = (
-        "Выберите сумму пополнения.\n"
-        "Баланс общий: с него оплачиваются стикеры и видео."
+        "Выберите сумму пополнения для покупки генераций.\n"
+        "Оплата конкретной генерации списывается с общего рублёвого баланса."
     )
     if isinstance(event, CallbackQuery):
         await event.answer()
@@ -1970,7 +2070,7 @@ async def receive_video_photo(
         except ValueError as exc:
             if str(exc) == "insufficient_balance":
                 await message.answer(
-                    "Недостаточно средств на балансе. Пополните его:",
+                    "Недостаточно доступов или средств. Пополните баланс:",
                     reply_markup=await _topup_markup(context),
                 )
                 return
@@ -1979,7 +2079,7 @@ async def receive_video_photo(
     await message.answer(
         "Фото принято ✅\n"
         f"Видеозадание <code>{generation.id[:8]}</code> поставлено в очередь.\n"
-        f"Списано: <b>{format_rub(generation.price_rub)}</b>.\n"
+        f"Списано: <b>{_generation_charge_text(generation)}</b>.\n"
         "Создание может занять несколько минут. Готовое MP4 придёт сюда автоматически."
     )
 
@@ -2004,6 +2104,195 @@ async def admin_callback_main(
     await callback.answer()
     if callback.message:
         await callback.message.answer("<b>Админ-панель</b>", reply_markup=admin_menu())
+
+
+@router.callback_query(F.data == "admin:access_codes")
+async def admin_access_codes(callback: CallbackQuery, context: AppContext) -> None:
+    if not await _admin_callback_allowed(callback, context):
+        return
+    async with context.db.sessions() as session:
+        stats = await access_code_stats(session)
+    await callback.answer()
+    if callback.message:
+        await callback.message.answer(
+            "<b>Доступы и коды</b>\n\n"
+            f"Всего создано: <b>{stats.total}</b>\n"
+            f"Осталось: <b>{stats.active}</b>\n"
+            f"Использовано: <b>{stats.redeemed}</b>\n"
+            f"Истёкло: <b>{stats.expired}</b>\n"
+            f"Отключено: <b>{stats.disabled}</b>",
+            reply_markup=access_code_admin_menu(),
+        )
+
+
+@router.callback_query(F.data == "admin:access_codes:create")
+async def admin_start_access_code_batch(
+    callback: CallbackQuery,
+    state: FSMContext,
+    context: AppContext,
+) -> None:
+    if not await _admin_callback_allowed(callback, context):
+        return
+    await state.clear()
+    await state.set_state(AdminAccessCodeFlow.awaiting_count)
+    await callback.answer()
+    if callback.message:
+        await callback.message.answer(
+            "Сколько одноразовых кодов создать?\n"
+            "Отправьте целое число от 1 до 500."
+        )
+
+
+@router.message(AdminAccessCodeFlow.awaiting_count, F.text)
+async def admin_access_code_count(message: Message, state: FSMContext, context: AppContext) -> None:
+    if not message.from_user or message.from_user.id not in context.settings.admin_ids:
+        return
+    try:
+        count = int((message.text or "").strip())
+    except ValueError:
+        await message.answer("Нужно отправить целое число от 1 до 500.")
+        return
+    if not 1 <= count <= 500:
+        await message.answer("Допустимо от 1 до 500 кодов в одной партии.")
+        return
+    await state.update_data(access_code_count=count)
+    await state.set_state(AdminAccessCodeFlow.awaiting_accesses)
+    await message.answer(
+        "Сколько генераций должен начислять <b>каждый</b> код?\n"
+        "Например: <code>1</code>, <code>5</code> или <code>10</code>."
+    )
+
+
+@router.message(AdminAccessCodeFlow.awaiting_accesses, F.text)
+async def admin_access_code_accesses(
+    message: Message,
+    state: FSMContext,
+    context: AppContext,
+) -> None:
+    if not message.from_user or message.from_user.id not in context.settings.admin_ids:
+        return
+    try:
+        accesses = int((message.text or "").strip())
+    except ValueError:
+        await message.answer("Нужно отправить целое число.")
+        return
+    if not 1 <= accesses <= 1000:
+        await message.answer("Допустимо от 1 до 1000 генераций на один код.")
+        return
+    await state.update_data(accesses_per_code=accesses)
+    await message.answer(
+        "Выберите срок действия кодов:",
+        reply_markup=access_code_expiry_menu(),
+    )
+
+
+@router.callback_query(F.data.startswith("admin:access_codes:expiry:"))
+async def admin_create_access_code_batch(
+    callback: CallbackQuery,
+    state: FSMContext,
+    context: AppContext,
+) -> None:
+    if not await _admin_callback_allowed(callback, context):
+        return
+    data = await state.get_data()
+    count = int(data.get("access_code_count") or 0)
+    accesses = int(data.get("accesses_per_code") or 0)
+    if not count or not accesses:
+        await callback.answer("Начните создание партии заново", show_alert=True)
+        await state.clear()
+        return
+    raw_expiry = (callback.data or "").rsplit(":", 1)[1]
+    expires_in_days = None if raw_expiry == "none" else int(raw_expiry)
+    async with context.db.sessions() as session:
+        batch, codes = await create_access_code_batch(
+            session,
+            count=count,
+            accesses_per_code=accesses,
+            created_by=callback.from_user.id,
+            expires_in_days=expires_in_days,
+        )
+        session.add(
+            AuditLog(
+                actor_telegram_id=callback.from_user.id,
+                action="access_code_batch_created",
+                target_type="access_code_batch",
+                target_id=batch.id,
+                details=f"count={count}; accesses={accesses}; expiry={raw_expiry}",
+            )
+        )
+        await session.commit()
+    await state.clear()
+    await callback.answer("Коды созданы", show_alert=True)
+    if callback.message:
+        expiry_text = (
+            f"{expires_in_days} дней" if expires_in_days is not None else "без срока"
+        )
+        await callback.message.answer(
+            "Партия создана ✅\n"
+            f"Кодов: <b>{count}</b>\n"
+            f"Генераций по каждому коду: <b>{accesses}</b>\n"
+            f"Срок: <b>{expiry_text}</b>"
+        )
+        content = "\n".join(code.code for code in codes).encode("utf-8")
+        await callback.message.answer_document(
+            BufferedInputFile(content, filename=f"access-codes-{batch.id[:8]}.txt"),
+            caption="Коды партии. Сохраните файл в безопасном месте.",
+            reply_markup=access_code_admin_menu(),
+        )
+
+
+@router.callback_query(F.data.startswith("admin:access_codes:list:"))
+async def admin_list_access_codes(callback: CallbackQuery, context: AppContext) -> None:
+    if not await _admin_callback_allowed(callback, context):
+        return
+    status = (callback.data or "").rsplit(":", 1)[1]
+    async with context.db.sessions() as session:
+        codes = await recent_access_codes(session, status=status, limit=20)
+    await callback.answer()
+    if not callback.message:
+        return
+    if not codes:
+        await callback.message.answer(
+            "В этом списке пока нет кодов.",
+            reply_markup=access_code_admin_menu(),
+        )
+        return
+    title = "Оставшиеся коды" if status == "active" else "Использованные коды"
+    lines = [f"<b>{title}</b> (последние 20)", ""]
+    for code in codes:
+        details = (
+            f" · Telegram ID <code>{code.redeemed_by_telegram_id}</code>"
+            if code.redeemed_by_telegram_id
+            else ""
+        )
+        lines.append(
+            f"<code>{code.code}</code> · {code.accesses} ген.{details}"
+        )
+    await callback.message.answer(
+        "\n".join(lines),
+        reply_markup=access_code_admin_menu(),
+    )
+
+
+@router.callback_query(F.data == "admin:access_codes:excel")
+async def admin_export_access_codes(callback: CallbackQuery, context: AppContext) -> None:
+    if not await _admin_callback_allowed(callback, context):
+        return
+    async with context.db.sessions() as session:
+        stats = await access_code_stats(session)
+        rows = await access_code_report_rows(session)
+    report = await asyncio.to_thread(build_access_codes_workbook, rows, stats)
+    await callback.answer()
+    if callback.message:
+        filename = f"access-codes-{datetime.now(UTC):%Y-%m-%d-%H%M}.xlsx"
+        await callback.message.answer_document(
+            BufferedInputFile(report, filename=filename),
+            caption=(
+                f"Отчёт готов: осталось {stats.active}, "
+                f"использовано {stats.redeemed}."
+            ),
+            reply_markup=access_code_admin_menu(),
+        )
 
 
 @router.callback_query(F.data == "admin:video")

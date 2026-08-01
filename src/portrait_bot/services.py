@@ -452,11 +452,17 @@ async def create_generation(
         if not is_free_admin and await balance(session, user.id) < credits:
             raise ValueError("insufficient_balance")
     else:
-        charged_rub = Decimal("0") if is_free_admin else money(price_rub)
-        if charged_rub < 0:
+        configured_price = money(price_rub)
+        if configured_price < 0:
             raise ValueError("invalid_generation_price")
-        if charged_rub and await wallet_balance(session, user.id) < charged_rub:
-            raise ValueError("insufficient_balance")
+        if not is_free_admin:
+            available_accesses = await balance(session, user.id)
+            if not mode.startswith("video:") and available_accesses >= credits:
+                charged_credits = credits
+            else:
+                charged_rub = configured_price
+                if charged_rub and await wallet_balance(session, user.id) < charged_rub:
+                    raise ValueError("insufficient_balance")
 
     generation_id = str(uuid.uuid4())
     user_dir = settings.storage_dir / user.id
@@ -663,6 +669,7 @@ def _draw_caption(canvas: Image.Image, caption: str) -> None:
 
 def _prepare_sticker(result_path: Path, caption: str | None = None) -> Path:
     sticker_path = result_path.with_suffix(".webp")
+    sticker_path.parent.mkdir(parents=True, exist_ok=True)
     with Image.open(result_path) as opened:
         image = ImageOps.exif_transpose(opened).convert("RGBA")
         _remove_chroma_key(image)
@@ -730,6 +737,11 @@ def _prepare_photo_caption(result_path: Path, caption: str) -> Path:
     return result_path
 
 
+def _write_generated_file(path: Path, content: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(content)
+
+
 class GenerationWorker:
     def __init__(
         self,
@@ -770,6 +782,7 @@ class GenerationWorker:
         try:
             source_bytes = await asyncio.to_thread(Path(source_path).read_bytes)
             generated_paths: list[Path] = []
+            compact_generation_id = generation_id.replace("-", "")
             if is_video:
                 if self.video_provider is None:
                     raise VideoProviderError(
@@ -781,8 +794,10 @@ class GenerationWorker:
                     prompt,
                     video_duration,
                 )
-                video_path = Path(source_path).with_name(f"{generation_id}-result.mp4")
-                await asyncio.to_thread(video_path.write_bytes, result)
+                video_path = Path(source_path).with_name(
+                    f"{compact_generation_id}-result.mp4"
+                )
+                await asyncio.to_thread(_write_generated_file, video_path, result)
                 generated_paths.append(video_path)
             else:
                 for index in range(quantity):
@@ -793,9 +808,9 @@ class GenerationWorker:
                         else prompt,
                     )
                     image_path = Path(source_path).with_name(
-                        f"{generation_id}-result-{index + 1}.png"
+                        f"{compact_generation_id}-result-{index + 1}.png"
                     )
-                    await asyncio.to_thread(image_path.write_bytes, result)
+                    await asyncio.to_thread(_write_generated_file, image_path, result)
                     generated_paths.append(
                         await asyncio.to_thread(
                             _prepare_sticker,

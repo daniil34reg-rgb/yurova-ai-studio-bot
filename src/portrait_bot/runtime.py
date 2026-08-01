@@ -159,7 +159,11 @@ async def worker_loop(context: AppContext, *, idle_seconds: float = 1.0) -> None
                     " Списанная сумма автоматически возвращена "
                     f"на баланс ({format_rub(generation.price_rub)})."
                     if generation.price_rub > 0
-                    else ""
+                    else (
+                        f" Списанные доступы возвращены на баланс ({generation.credits})."
+                        if generation.credits > 0
+                        else ""
+                    )
                 )
                 if generation.mode.startswith("video:"):
                     details = ""

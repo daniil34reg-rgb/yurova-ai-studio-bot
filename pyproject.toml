@@ -16,6 +16,7 @@ dependencies = [
   "fastapi>=0.116,<1",
   "httpx>=0.28,<1",
   "openai>=1.99,<3",
+  "openpyxl>=3.1,<4",
   "pillow>=11.3,<13",
   "pydantic-settings>=2.10,<3",
   "qrcode[pil]>=8,<9",

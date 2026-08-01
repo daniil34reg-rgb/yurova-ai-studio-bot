@@ -49,9 +49,10 @@ def main_menu(
     if features.get("balance", True):
         account.append(KeyboardButton(text="💰 Мой баланс"))
     if features.get("payments", True):
-        account.append(KeyboardButton(text="💳 Пополнить баланс"))
+        account.append(KeyboardButton(text="🛒 Купить доступ к генерации"))
     if account:
         rows.append(account)
+    rows.append([KeyboardButton(text="🎟 Активировать доступ")])
     history: list[KeyboardButton] = []
     if features.get("orders", True):
         history.append(KeyboardButton(text="🖼 Мои работы"))
@@ -143,12 +144,20 @@ def home_actions_menu(
     if features.get("payments", True):
         account.append(
             InlineKeyboardButton(
-                text="💳 Пополнить баланс",
+                text="🛒 Купить доступ к генерации",
                 callback_data="menu:buy",
             )
         )
     if account:
         rows.append(account)
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text="🎟 Активировать доступ",
+                callback_data="access:redeem",
+            )
+        ]
+    )
     if features.get("support", True):
         rows.append(
             [
@@ -528,6 +537,7 @@ def admin_menu() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="📸 Фото и образы", callback_data="admin:photo")],
             [InlineKeyboardButton(text="🎬 Настройки видео", callback_data="admin:video")],
             [InlineKeyboardButton(text="💳 Способы оплаты", callback_data="admin:payments")],
+            [InlineKeyboardButton(text="🎟 Доступы и коды", callback_data="admin:access_codes")],
             [InlineKeyboardButton(text="📝 Тексты бота", callback_data="admin:texts")],
             [InlineKeyboardButton(text="📄 Документы", callback_data="admin:documents")],
             [
@@ -537,6 +547,58 @@ def admin_menu() -> InlineKeyboardMarkup:
                 )
             ],
             [InlineKeyboardButton(text="🛟 Обращения", callback_data="admin:tickets")],
+        ]
+    )
+
+
+def access_code_admin_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="➕ Создать партию кодов",
+                    callback_data="admin:access_codes:create",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🟢 Оставшиеся коды",
+                    callback_data="admin:access_codes:list:active",
+                ),
+                InlineKeyboardButton(
+                    text="✅ Использованные",
+                    callback_data="admin:access_codes:list:redeemed",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="📊 Скачать Excel",
+                    callback_data="admin:access_codes:excel",
+                )
+            ],
+            [InlineKeyboardButton(text="◀️ Админ-панель", callback_data="admin:main")],
+        ]
+    )
+
+
+def access_code_expiry_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="30 дней", callback_data="admin:access_codes:expiry:30"),
+                InlineKeyboardButton(text="90 дней", callback_data="admin:access_codes:expiry:90"),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="180 дней",
+                    callback_data="admin:access_codes:expiry:180",
+                ),
+                InlineKeyboardButton(
+                    text="Без срока",
+                    callback_data="admin:access_codes:expiry:none",
+                ),
+            ],
+            [InlineKeyboardButton(text="Отмена", callback_data="admin:access_codes")],
         ]
     )
 
