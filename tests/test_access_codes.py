@@ -56,6 +56,27 @@ async def test_access_code_can_only_be_redeemed_once(database) -> None:
         assert stats.redeemed == 1
 
 
+async def test_persisted_expiring_access_code_can_be_redeemed(database) -> None:
+    async with database.sessions() as session:
+        _, codes = await create_access_code_batch(
+            session,
+            count=1,
+            accesses_per_code=3,
+            created_by=999,
+            expires_in_days=30,
+        )
+        raw_code = codes[0].code
+        user = await get_or_create_user(session, telegram_id=10004, username="persisted")
+
+    # A fresh SQLite session loads DateTime values without timezone metadata,
+    # matching the production path that previously raised TypeError.
+    async with database.sessions() as session:
+        user = await get_or_create_user(session, telegram_id=10004, username="persisted")
+        redeemed = await redeem_access_code(session, user=user, raw_code=raw_code)
+        assert redeemed.redeemed_by_telegram_id == 10004
+        assert await balance(session, user.id) == 3
+
+
 async def test_access_code_report_is_a_valid_excel_file(database) -> None:
     async with database.sessions() as session:
         await create_access_code_batch(

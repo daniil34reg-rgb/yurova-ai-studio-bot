@@ -148,6 +148,12 @@ async def redeem_access_code(
             redeemed_by_telegram_id=user.telegram_id,
             redeemed_at=now,
         )
+        # SQLite returns persisted DateTime values without timezone data.  The
+        # ORM's default in-memory synchronization would compare that naive
+        # value with ``now`` (UTC-aware) and fail before executing the UPDATE.
+        # The row is refreshed explicitly below, so no synchronization is
+        # needed here.
+        .execution_options(synchronize_session=False)
     )
     if result.rowcount != 1:
         await session.rollback()
