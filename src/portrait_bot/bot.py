@@ -726,7 +726,8 @@ async def start_access_activation(
     await state.set_state(AccessFlow.awaiting_code)
     text = (
         "<b>Активировать доступ</b>\n\n"
-        "Отправьте полученный код одним сообщением. "
+        "Скопируйте один код вида <code>YAI-XXXX-XXXX</code> и отправьте его "
+        "обычным текстовым сообщением. TXT-файл отправлять не нужно. "
         "После активации доступы к генерации появятся на вашем балансе."
     )
     if isinstance(event, CallbackQuery):
@@ -737,6 +738,7 @@ async def start_access_activation(
         await event.answer(text, reply_markup=back_menu())
 
 
+@router.message(F.text.startswith("YAI-"))
 @router.message(AccessFlow.awaiting_code, F.text)
 async def activate_access_code(
     message: Message,
@@ -2233,6 +2235,11 @@ async def admin_create_access_code_batch(
             f"Генераций по каждому коду: <b>{accesses}</b>\n"
             f"Срок: <b>{expiry_text}</b>"
         )
+        if count <= 10:
+            visible_codes = "\n".join(f"<code>{escape(code.code)}</code>" for code in codes)
+            await callback.message.answer(
+                "Скопируйте нужный код нажатием на строку:\n\n" + visible_codes
+            )
         content = "\n".join(code.code for code in codes).encode("utf-8")
         await callback.message.answer_document(
             BufferedInputFile(content, filename=f"access-codes-{batch.id[:8]}.txt"),
