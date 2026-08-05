@@ -39,6 +39,10 @@ GATEWAY_SETTINGS: dict[str, tuple[str, str]] = {
         "Первая кнопка на старте",
         "📱 Купить стикер «iPhone 17»",
     ),
+    "gateway_store_enabled": (
+        "Первая кнопка на старте включена",
+        "true",
+    ),
     "gateway_ai_button": (
         "Вторая кнопка на старте",
         "✨ Генерация изображений",
@@ -109,22 +113,25 @@ async def store_settings(context: AppContext) -> dict[str, str]:
 
 
 def gateway_menu(values: dict[str, str]) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
+    rows: list[list[InlineKeyboardButton]] = []
+    if _enabled(values.get("gateway_store_enabled", "true")):
+        rows.append(
             [
                 InlineKeyboardButton(
                     text=values["gateway_store_button"],
                     callback_data="entry:store",
                 )
-            ],
-            [
-                InlineKeyboardButton(
-                    text=values["gateway_ai_button"],
-                    callback_data="entry:ai",
-                )
-            ],
+            ]
+        )
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text=values["gateway_ai_button"],
+                callback_data="entry:ai",
+            )
         ]
     )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def admin_root_menu() -> InlineKeyboardMarkup:
@@ -154,8 +161,19 @@ def admin_root_menu() -> InlineKeyboardMarkup:
 
 def gateway_admin_menu(values: dict[str, str]) -> InlineKeyboardMarkup:
     button_enabled = _enabled(values["gateway_all_sections_enabled"])
+    store_enabled = _enabled(values.get("gateway_store_enabled", "true"))
     return InlineKeyboardMarkup(
         inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=(
+                        "🟢 Первая кнопка «Акции» включена"
+                        if store_enabled
+                        else "⚪️ Первая кнопка «Акции» выключена"
+                    ),
+                    callback_data="admin:gateway:toggle:gateway_store_enabled",
+                )
+            ],
             [
                 InlineKeyboardButton(
                     text="✏️ Первая кнопка",
@@ -289,6 +307,8 @@ async def open_gateway_admin(callback: CallbackQuery, context: AppContext) -> No
             "<b>Начальный экран</b>\n\n"
             f"Текст: {escape(values['gateway_message'])}\n"
             f"Первая кнопка: {escape(values['gateway_store_button'])}\n"
+            "Первая кнопка на старте: "
+            f"{'включена' if _enabled(values.get('gateway_store_enabled', 'true')) else 'выключена'}\n"
             f"Вторая кнопка: {escape(values['gateway_ai_button'])}\n"
             "Кнопка «Все разделы»: "
             f"{'включена' if _enabled(values['gateway_all_sections_enabled']) else 'выключена'}\n"
@@ -329,6 +349,43 @@ async def toggle_all_sections_button(
             "Кнопка «Все разделы» включена."
             if _enabled(new_value)
             else "Кнопка «Все разделы» выключена.",
+            reply_markup=gateway_admin_menu(values),
+        )
+
+
+@router.callback_query(F.data == "admin:gateway:toggle:gateway_store_enabled")
+async def toggle_store_button(
+    callback: CallbackQuery,
+    context: AppContext,
+) -> None:
+    if not _is_admin(callback.from_user.id, context):
+        await callback.answer("Нет доступа.", show_alert=True)
+        return
+    values = await store_settings(context)
+    new_value = (
+        "false" if _enabled(values.get("gateway_store_enabled", "true")) else "true"
+    )
+    async with context.db.sessions() as session:
+        item = await session.get(BotSetting, "gateway_store_enabled")
+        if item:
+            item.value = new_value
+        else:
+            title = GATEWAY_SETTINGS["gateway_store_enabled"][0]
+            session.add(
+                BotSetting(
+                    key="gateway_store_enabled",
+                    title=title,
+                    value=new_value,
+                )
+            )
+        await session.commit()
+    values = await store_settings(context)
+    await callback.answer("Настройка сохранена")
+    if isinstance(callback.message, Message):
+        await callback.message.answer(
+            "Первая кнопка «Акции» включена."
+            if _enabled(new_value)
+            else "Первая кнопка «Акции» выключена.",
             reply_markup=gateway_admin_menu(values),
         )
 

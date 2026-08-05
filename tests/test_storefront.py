@@ -16,6 +16,7 @@ from portrait_bot.storefront import (
 def test_gateway_has_two_configurable_sections() -> None:
     markup = gateway_menu(
         {
+            "gateway_store_enabled": "true",
             "gateway_store_button": "Купить стикер iPhone 17",
             "gateway_ai_button": "Генерация картинок",
         }
@@ -28,6 +29,18 @@ def test_gateway_has_two_configurable_sections() -> None:
         "entry:store",
         "entry:ai",
     ]
+
+
+def test_store_button_can_be_disabled_on_gateway() -> None:
+    markup = gateway_menu(
+        {
+            "gateway_store_enabled": "false",
+            "gateway_store_button": "Акции",
+            "gateway_ai_button": "AI-генерация",
+        }
+    )
+    assert [row[0].text for row in markup.inline_keyboard] == ["AI-генерация"]
+    assert [row[0].callback_data for row in markup.inline_keyboard] == ["entry:ai"]
 
 
 def test_admin_root_selects_store_or_generation() -> None:
@@ -77,6 +90,9 @@ async def test_gateway_settings_are_created(tmp_path) -> None:
             setting = await session.get(BotSetting, "gateway_store_button")
             assert setting is not None
             assert "iPhone 17" in setting.value
+            store_enabled = await session.get(BotSetting, "gateway_store_enabled")
+            assert store_enabled is not None
+            assert store_enabled.value == "true"
             back_setting = await session.get(BotSetting, "gateway_all_sections_label")
             assert back_setting is not None
             assert back_setting.value == "↩️ Все разделы"
